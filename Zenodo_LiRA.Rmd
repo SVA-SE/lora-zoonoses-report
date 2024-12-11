@@ -1,0 +1,252 @@
+---
+title: "Zenodo_LiRA"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(kableExtra)
+
+df_zen_22 <- read.csv2("PREVALENCE_2022.csv")
+```
+
+"Prevalence data complementing the European Union One Health 2022 Zoonoses Report" https://zenodo.org/records/10246432
+
+*This dataset contains monitoring data on zoonoses and zoonotic agents under the Directive 2003/99/EC https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A02003L0099-20130701. This Directive requires Member Sates (MSs) to collect, evaluate and report data on zoonoses and zoonotic agents.(Echinoccocus should be monitored by all MS, Influenza, borreliosis, arbo-viruses depending on epidemiological situation) MSs can also report monitoring data and information on some other pathogenic microbiological agents in foodstuffs.*
+
+
+Subcontract2 (SC2) diseases:
+*EEE, WEE, VEE, WNF, Q-fever, Lyme, Leishmaniosis, Swine Influenza, Hepatitis E, Tick-borne Encephalitis and Echonococcus granulosus*, ZR 2022 contains WNF,  Echinoccocus, Q-fever (Coxiella) and Leishmania. The data available is from 2022, but the data from 2023 may be available from mid-december 2024.Previous year 2021 is available as well, but When moving further out, the data seemed to have different structure. In the zonosis-report several non-animal matrices are sampled and the reports used below has been limited to SPECIESTYPE == "animal".
+
+## Field_guide ZR
+
+Guides with field-descriptions for the zoonosis-report (2022) have been made and uploaded to the Lira Sharepoint. https://svasweden.sharepoint.com/:f:/r/sites/LiRA_consortium/Shared%20Documents/WG1%20Disease%20occurrence/datasources/Second-disease-group?csf=1&web=1&e=IohoKn
+
+
+```{r}
+#Field_description_ZR <- as.data.frame(names(df_zen))
+#Field_description_ZR <- Field_description_ZR %>% mutate(Description = "")
+#names(Field_description_ZR)<- c("ZR_field", "Description")
+#write.csv2(Field_description_ZR, "Field_description_ZR.csv")
+```
+
+## SUMMARY: 
+The data is collected from "Prevalence data complementing the European Union One Health 2022 Zoonoses Report" https://zenodo.org/records/10246432 and contains reports on Leishmania, Echinococcus, and Q-fever (Coxiella) of the selected diseases for SC2. Leishmania will be assessed by WAHIS-data, and  TBE and Lyme from ECDC-data.
+
+Functional group for both E. granulosus and Coxiella (Q fever) is primarily livestock, and additionally for E. granulosis, dogs,   'Domestic amplifying'  
+
+
+```{r, include=FALSE}
+
+
+## filter for Q-fever and Echinococcus (excluding E. multilocularis, E. spp), only animal samples. 
+df_zen <- df_zen_22 %>%
+filter(str_detect(ZOONOSIS, "Coxiella") | str_detect(ZOONOSIS, "Echinococcus")) %>%
+  filter(SPECIESTYPE == "animal") %>%
+  filter(!str_detect(ZOONOSIS, "multiloc")) %>%
+  filter(!str_detect(ZOONOSIS, "Echinococcus spp."))
+df_zen$ZOONOSIS <- as.factor(df_zen$ZOONOSIS)
+
+## Create Agent column (to consolidate subspecies categories for visualization)
+df_zen <- df_zen %>%
+  mutate(Agent = case_when( str_detect(ZOONOSIS, "granulosus") ~ "E. granulosus", str_detect(ZOONOSIS, "Coxiella") ~ "Coxiella", .default = ZOONOSIS)) 
+
+
+```
+
+## Species
+Adding a column for 'Species' to consolidate the number of species present in 'MATRIX' for both diseases:
+
+```{r}
+
+## gather up species and add functional group:
+
+  df_zen <- mutate(df_zen, Species =  case_when(
+    str_detect(MATRIX, "Solipeds") ~ "Domesticated Equids",
+    str_detect(MATRIX, "Pigs") ~ "Pigs",
+    str_detect(MATRIX, "Goat") ~"Goats",
+    str_detect(MATRIX, "Sheep") ~ "Sheep", 
+    str_detect(MATRIX, "Cattle") ~ "Cattle", 
+    str_detect(MATRIX, "Deer") ~ "Wildlife",
+    str_detect(MATRIX, "Dogs") ~"Dogs",
+    str_detect(MATRIX, "Reindeer") ~"Reindeer", 
+    str_detect(MATRIX, "Cats") ~ "Cats",
+    str_detect(MATRIX, regex("wild", ignore_case = TRUE)) ~ "Wildlife", 
+    str_detect(MATRIX, "Wild boar") ~ "Wild boars",
+    str_detect(MATRIX, regex("Fox", ignore_case = TRUE)) ~ "Foxes",
+    MATRIX == "Badgers"| MATRIX == "Deer" | MATRIX == "Coypu"|MATRIX == "Hares" |
+      MATRIX == "Mouflons" | MATRIX =="Raccoons" | MATRIX == "Squirrels" ~ "Wildlife",
+    str_detect(MATRIX, regex("Zoo", ignore_case = TRUE)) ~ "Zoo_animal",
+    TRUE ~ MATRIX))
+
+
+
+df_zen %>%
+  group_by(Species, MATRIX) %>%
+  tally ()%>%
+kable() %>% 
+ kable_styling(bootstrap_options = "striped", full_width=FALSE, position = "left") 
+
+
+df_zen %>%
+  group_by(Agent, Species) %>%
+  tally ()%>%
+kable() %>% 
+ kable_styling(bootstrap_options = "striped", full_width=FALSE, position = "left") 
+```
+
+
+
+
+
+## Agents
+Currently, the ZR is used for **Echinococcus and Coxiella (Q-fever)**. 
+
+For the purpose of Lira/L'ora disease presence in a country is defined as at least one reported case in an animal or a human. For Coxiella and Echinococcus, a joined approach utilizing both ECDC for non-travel related cases in humans, and ZR data on cases in animals might give a more complete picture. 
+
+For Coxiella (Q-fever) there are three different factor-levels used to annotate the agent in 'MATRIX' and for Echinococcus, E. multilocularis excluded, five.   
+```{r}
+df_zen %>%
+  filter(str_detect(ZOONOSIS, "Coxiella")) %>%
+  distinct(ZOONOSIS) %>%
+  print()
+
+Echlvl <- df_zen %>%
+  filter(str_detect(ZOONOSIS, "Echinococcus")) %>%
+  distinct(ZOONOSIS)
+  
+as.vector(Echlvl)
+
+
+```
+
+
+ The variables 'TOTALUNITSTESTED' and 'TOTUNITSPOSITIVE' can be used to decide the disease presence. For this purpose, any country reporting one or more positive cases in animals  'TOTUNITSPOSITIVE' is considered having the disease present in the country for the reported year. **Note**: As the level of testing varies greatly, maybe the non-travel related human cases from ECDC should be used as well to create country presence. 
+
+## Coxiella (Qfever), country presence
+
+```{r}
+df_zen_Cox_tested <- df_zen %>%
+  filter(str_detect(ZOONOSIS, "Coxiella")) %>%
+  group_by(REPCOUNTRY) %>%
+  summarise(sum(TOTUNITSTESTED), sum(TOTUNITSPOSITIVE))
+names(df_zen_Cox_tested) <- c("REPCOUNTRY", "TOTUNITSTESTED", "TOTUNITSPOSITIVE")
+df_zen_Cox_tested <- df_zen_Cox_tested %>%
+  mutate(Presence = if_else(TOTUNITSPOSITIVE >=1, "Present", "Unknown"))
+arrange(df_zen_Cox_tested, desc(TOTUNITSPOSITIVE)) %>%
+  kable(caption = "Animals tested for Coxiella (Qfever) by reporting country") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+
+
+
+
+```
+
+## Echinococcus (Egran), country presence
+
+'ZOONOSIS' "Echinococcus" is used for tested but negative. Positive cases are further subtyped. For LiRA, it is specifically **E. granulosis** that is to be included. There is a subgroup "Echinococcus spp." which is not further specified (6 reports, 1 slovakia, 1 slovenia, 3 Germany and 1 switzerland. Of those, only Slovakia has E.granulosus (737)). Both E. multilocularis and the reports of the unspecified find are excluded in the table below. 
+
+
+A large proportion of the Echinococcus-testing is labelled as 'visual inspection' given the amount of animals - this is likely mostly to consist of abbattoir inspections. 
+
+```{r}
+
+df_zen_Ech_tab <- df_zen %>%
+  filter(str_detect(ZOONOSIS, "Ech")) %>%
+  group_by(REPCOUNTRY) %>%
+  summarise(sum(TOTUNITSTESTED), sum(TOTUNITSPOSITIVE)) %>%
+  arrange(desc(`sum(TOTUNITSPOSITIVE)`)) 
+
+names(df_zen_Ech_tab) <- c("REPCOUNTRY", "TOTUNITSTESTED", "TOTUNITSPOSITIVE")
+df_zen_Ech_tab <- df_zen_Ech_tab %>%
+  mutate(Presence = if_else(TOTUNITSPOSITIVE >=1, "Present", "Unknown"))
+
+  kable(df_zen_Ech_tab, caption = "Animals tested for Echinococcus (Egran) by reporting country") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE, position = "center")
+
+
+
+
+df_zen_Ech_tab %>%
+  filter(!is.na(TOTUNITSTESTED)) %>%
+  mutate(REPCOUNTRY = fct_reorder(REPCOUNTRY, TOTUNITSTESTED)) %>%
+  ggplot( aes(x=REPCOUNTRY, y=log10(TOTUNITSTESTED))) +
+  geom_bar(stat = "identity") +
+  #geom_segment( aes(x= REPCOUNTRY ,xend=REPCOUNTRY, y=0, yend=TOTUNITSTESTED), color="grey") +
+    #geom_point(size=3, color="#69b3a2") +
+    coord_flip() +
+    #theme_ipsum() +
+    theme(
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.y = element_blank(),
+      legend.position="none") +
+      xlab("") +
+  ggtitle("Total units tested for Echinococcus, per reporting country")
+
+
+```
+
+
+The number of tested and actual cases is widely different in the reporting countries. The zoonosis report 2022 states:  *"Surveillance of E. granulosus s.l. is carried out in livestock intermediate hosts during slaughterhouse inspections. In particular, necropsy on sheep liver and lungs is used to detect the presence of parasitic cysts. In contrast, methods based on*
+*molecular PCR methods are used to confirm and identify genotype or species belonging to the Echinococcus genus (SilesLucas et al., 2017). Although Regulation (EU) 2018/772is in force for E. multilocularis, no specific EU regulation is in place for*
+*detecting E. granulosus s.l. in animals or humans. Surveillance of the latter parasite, therefore, depends on national regulations. Approximate geographical distribution of E. granulosus s.l. species causing human CE and country-based incidencesin Europe were reported recently (Casulli et al., 2022; Casulli et al., 2023)."*
+https://pubmed.ncbi.nlm.nih.gov/36427513/  (Casulli review 2023)
+
+Reports of E granulosus in Lithuania: 
+
+Marcinkutė A, Šarkūnas M, Moks E, Saarma U, Jokelainen P, Bagrade G, Laivacuma S, Strupas K, Sokolovas V, Deplazes P. Echinococcus infections in the Baltic region. Vet Parasitol. 2015 Oct 30;213(3-4):121-31. doi: 10.1016/j.vetpar.2015.07.032. Epub 2015 Jul 31. PMID: 26324242. https://doi.org/10.1016/j.vetpar.2015.07.032
+
+ 
+and Croatia: Endemicity is implied
+
+Tabain I, Sviben M, Ljubin-Sternak S, Vilibić-Čavlek T, Mlinarić-Galinović G. Seroprevalence of Echinococcus granulosus infection in Croatian patients with cystic liver disease. J Helminthol. 2011 Jun;85(2):192-5. doi: 10.1017/S0022149X1000043X. Epub 2010 Aug 25. PMID: 20735896.https://pubmed.ncbi.nlm.nih.gov/20735896/
+
+## Data checks
+In the last chunk of code there are lines to find EUcountries that has not reported, and a write to csv for disease occurrence including species, agggregated by country. NB: disease occurrence are still country based, should I add functional group? 
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+ 
+
+##diseasepresence to .csv
+df_dis_pres <- df_zen %>%
+  group_by(REPCOUNTRY, Agent, Species) %>%
+  summarize(sum(TOTUNITSTESTED), sum(TOTUNITSPOSITIVE))
+names(df_dis_pres) <- c("REPCOUNTRY", "Agent", "Species", "TOTUNITSTESTED", "TOTUNITSPOSITIVE")
+
+df_dis_pres <- df_dis_pres %>%
+  group_by(REPCOUNTRY, Agent) %>%
+  mutate(Presence = if_else(any(TOTUNITSPOSITIVE >= 1), "Present", "Unknown"))
+
+#kable(df_dis_pres) %>%
+ # kable_styling(bootstrap_options = "striped", full_width = FALSE, position = "center")
+
+#write.csv(df_dis_pres, "disease_presence_ZR.csv")
+
+## Missing countries
+##Countries not reporting (ZR) on Echinococcus or Qfever. 
+
+EU_MS <- read.csv2("EU_MS.csv")
+EU_MS2 <- trimws(EU_MS$Eu_countries)
+
+## compare the countrylist to MSlist
+RepEchCountries <- df_zen_Ech_tab$REPCOUNTRY
+RepQfCountries <- df_zen_Cox_tested$REPCOUNTRY
+#setdiff(EU_MS2,RepEchCountries)
+#setdiff(EU_MS2,RepQfCountries)
+  
+```
+
+
+```{r, eval == FALSE}
+
+
+```
+
+
+
+
+
