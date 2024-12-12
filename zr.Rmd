@@ -1,0 +1,197 @@
+---
+title: "L'ORA - zoonoses report"
+author: "Alfredo Acosta SVA" 
+date: "`r Sys.Date()`" 
+output: 
+  html_document:
+    toc: yes
+    toc_float: true
+    theme: cosmo
+    fig_caption: yes
+    number_sections: yes
+    code_folding: show
+  html_notebook: 
+    toc: yes
+---
+# Working example zoonoses
+
+# Libraries
+```{r}
+# Spill over analysis
+# Update: 17/01/2024
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(readr)
+library(data.table)
+library(plotly)
+library(DT)
+library(arsenal)
+```
+# Working directory
+## Loading zoonoses report from zenodo locally adquired cases
+```{r}
+setwd("C:/Users/alfredo.acosta/SVA/LiRA_consortium - Documents/WG1 Disease occurrence/datasources/Second-disease-group/Zoonoses_report/")
+
+zr <- read.csv2("PREVALENCE_2022.csv")
+```
+
+# Checking Colnames
+```{r}
+colnames(zr)
+
+unique_count_values <- zr %>%
+  select(REPYEAR, REPCOUNTRY, ZOONOSIS, SPECIESTYPE, MATRIX) %>%
+  summarise(across(everything(), ~ list(unique(.)))) # Extract unique values for each column
+
+#Number of unique values
+# unique_count_values
+
+# To print it as a more human-readable form:
+unique_values <- unique_count_values %>%
+  mutate(across(everything(), ~ paste(unlist(.), collapse = ", ")))
+
+# unique_values
+
+# unique_values$REPYEAR
+# unique(unique_values$REPCOUNTRY)
+# unique(unique_values$ZOONOSIS)
+# unique(unique_values$SPECIESTYPE)
+# unique(unique_values$MATRIX)
+
+
+```
+
+# Filtering zoonoses name
+```{r}
+library(dplyr)
+library(stringr)
+
+zr2 <- zr %>%
+  filter(SPECIESTYPE == "animal") %>% 
+  filter(str_detect(ZOONOSIS, "Coxiella") | 
+         str_detect(ZOONOSIS, "Echinococcus") | 
+         str_detect(ZOONOSIS, "Leishmania") | 
+        str_detect(ZOONOSIS, "Echinococcus spp.")) %>%
+  filter(!str_detect(ZOONOSIS, "multiloc")) %>% 
+  mutate(DISEASE = case_when(
+    str_detect(ZOONOSIS, "granulosus") ~ "Echinococcosis",
+    str_detect(ZOONOSIS, "Echinococcus") ~ "Echinococcosis",
+    str_detect(ZOONOSIS, "Coxiella|Q fever") ~ "Q fever",
+    TRUE ~ ZOONOSIS # Keeps the original ZOONOSIS value if no match is found
+  )) %>% 
+  select(REPYEAR, ZOONOSIS, ZOONOSIS_C, REPCOUNTRY, MATRIX, MATRIX_C, DISEASE, TOTUNITSPOSITIVE, TOTUNITSTESTED, SAMPUNIT)
+
+# unique(zr2$REPYEAR)
+# unique(zr2$REPCOUNTRY)
+# unique(zr2$ZOONOSIS_C)
+# unique(zr2$MATRIX)
+# unique(zr2$DISEASE)
+
+```
+
+# Diseases codes (diseases-zoonoses_C)
+```{r}
+table(zr2$ZOONOSIS_C, zr2$DISEASE)
+```
+
+# Number of reports availables
+```{r}
+datatable(zr2 %>% 
+  group_by(REPYEAR, DISEASE, REPCOUNTRY) %>% 
+  summarize(number_reports=(sum(TOTUNITSPOSITIVE, na.rm = TRUE))) %>% 
+  arrange(DISEASE, desc(number_reports)))
+```
+
+# Number of reports by type of study
+```{r}
+datatable(zr2 %>% 
+  group_by(REPYEAR, DISEASE, REPCOUNTRY, SAMPUNIT) %>% 
+  summarize(number_reports=(sum(TOTUNITSPOSITIVE, na.rm = TRUE))) %>% 
+  spread(key = SAMPUNIT , value = number_reports))
+        
+```
+
+# Species
+## from 78 species we reorganize them to 13
+```{r}
+zr2 %>% group_by(MATRIX) %>%
+  summarise(reports=n())
+
+  zr2 <- mutate(zr2, species_fg =  case_when(
+    str_detect(MATRIX, "Solipeds") ~ "Domesticated Equids",
+    str_detect(MATRIX, "Pigs") ~ "Pigs",
+    str_detect(MATRIX, "Goat") ~"Goats",
+    str_detect(MATRIX, "Sheep") ~ "Sheep", 
+    str_detect(MATRIX, "Cattle") ~ "Cattle", 
+    str_detect(MATRIX, "Deer") ~ "Wildlife",
+    str_detect(MATRIX, "Dogs") ~"Dogs",
+    str_detect(MATRIX, "Reindeer") ~"Reindeer", 
+    str_detect(MATRIX, "Cats") ~ "Cats",
+    str_detect(MATRIX, regex("wild", ignore_case = TRUE)) ~ "Wildlife", 
+    str_detect(MATRIX, "Wild boar") ~ "Wild boars",
+    str_detect(MATRIX, regex("Fox", ignore_case = TRUE)) ~ "Foxes",
+    MATRIX == "Badgers"| MATRIX == "Deer" | MATRIX == "Coypu"|MATRIX == "Hares" |
+      MATRIX == "Mouflons" | MATRIX =="Raccoons" | MATRIX == "Squirrels" ~ "Wildlife",
+    str_detect(MATRIX, regex("Zoo", ignore_case = TRUE)) ~ "Zoo_animal",
+    TRUE ~ MATRIX))
+
+#13 species found
+zr2 %>% group_by(species_fg) %>%
+  summarise(reports=n())
+
+# species and disease
+  zr2 %>% group_by(DISEASE, species_fg) %>%
+  summarise(reports=n())
+
+  zr2 %>% group_by(species_fg, DISEASE) %>%
+  summarise(reports=n())
+
+```
+# Assigning functional groups 
+## Acording how it appears in the last code chunk and comparison witn WG3 list 
+```{r}
+zr2$fg <- "0"
+zr2$fg[zr2$species_fg == "Alpacas - farmed" & zr2$DISEASE == "Q fever"] <- "Domestic amplification"
+zr2$fg[zr2$species_fg == "Cats" & zr2$DISEASE == "Echinococcosis"] <- "Domestic amplification"
+zr2$fg[zr2$species_fg == "Cattle" & zr2$DISEASE == "Echinococcosis"] <- "Domestic spillover"
+zr2$fg[zr2$species_fg == "Cattle" & zr2$DISEASE == "Q fever"] <- "Domestic amplification"
+zr2$fg[zr2$species_fg == "Dogs" & zr2$DISEASE == "Echinococcosis"] <- "Domestic amplification"
+zr2$fg[zr2$species_fg == "Dogs" & zr2$DISEASE == "Leishmania"] <- "Domestic amplification"
+zr2$fg[zr2$species_fg == "Dogs" & zr2$DISEASE == "Q fever"] <- "Domestic spillover"
+zr2$fg[zr2$species_fg == "Domesticated Equids" & zr2$DISEASE == "Q fever"] <- "Domestic spillover"
+zr2$fg[zr2$species_fg == "Domesticated Equids" & zr2$DISEASE == "Echinococcosis"] <- "Domestic spillover"
+zr2$fg[zr2$species_fg == "Foxes" & zr2$DISEASE == "Echinococcosis"] <- "Wildlife amplification"
+zr2$fg[zr2$species_fg == "Goats" & zr2$DISEASE == "Echinococcosis"] <- "Domestic spillover"
+zr2$fg[zr2$species_fg == "Goats" & zr2$DISEASE == "Q fever"] <- "Domestic spillover"
+zr2$fg[zr2$species_fg == "Goats" & zr2$DISEASE == "Q fever"] <- "Domestic amplification"
+zr2$fg[zr2$species_fg == "Pigs" & zr2$DISEASE == "Q fever"] <- "Domestic spillover"
+zr2$fg[zr2$species_fg == "Pigs" & zr2$DISEASE == "Echinococcosis"] <- "Domestic spillover"
+zr2$fg[zr2$species_fg == "Reindeer" & zr2$DISEASE == "Echinococcosis"] <- "Wildlife amplification"  # not sure
+zr2$fg[zr2$species_fg == "Sheep" & zr2$DISEASE == "Echinococcosis"] <- "Domestic amplification"  
+zr2$fg[zr2$species_fg == "Sheep" & zr2$DISEASE == "Q fever"] <- "Domestic amplification"  
+zr2$fg[zr2$species_fg == "Water buffalos" & zr2$DISEASE == "Echinococcosis"] <- "Domestic spillover"  
+zr2$fg[zr2$species_fg == "Water buffalos" & zr2$DISEASE == "Q fever"] <- "Domestic spillover"
+zr2$fg[zr2$species_fg == "Wildlife" & zr2$DISEASE == "Q fever"] <- "Wildlife spillover"  #only because is the most common
+zr2$fg[zr2$species_fg == "Wildlife" & zr2$DISEASE == "Echinococcosis"] <- "Wildlife amplification" #only because is the most common
+zr2$fg[zr2$species_fg == "Zoo_animal" & zr2$DISEASE == "Echinococcosis"] <- "Domestic spillover" #Because they are confined could be a dead end "spillover" also those animals receive veterinary attention, diagnosis, these reported cases would have had a desition and reduced their possibility to transmit "amplification"  
+zr2$fg[zr2$species_fg == "Zoo_animal" & zr2$DISEASE == "Q fever"] <- "Domestic spillover" #Same consideration
+
+  zr2 %>% group_by(species_fg, DISEASE, fg) %>%
+  summarise(reports=n())
+
+
+```
+
+```{r}
+species_fg <- zr2 %>% 
+  group_by(MATRIX_C, MATRIX, DISEASE, fg) %>% 
+  summarise(number=n()) %>% 
+  arrange(desc(number))
+
+# write.csv(species_fg, file = "species_fg_zoonoses.csv")
+```
+
+
+# Credits Acosta, A.; Ernholm, L. <sup>1</sup>.
+**SVA<sup>1</sup>**: SVA <http://www.sva.se/>. 
